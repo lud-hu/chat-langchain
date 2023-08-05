@@ -1,12 +1,13 @@
 """Main entrypoint for the app."""
 import logging
-import pickle
-from pathlib import Path
+import os
 from typing import Optional
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.templating import Jinja2Templates
-from langchain.vectorstores import VectorStore
+from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.vectorstores import Qdrant, VectorStore
+from qdrant_client import QdrantClient
 
 from callback import QuestionGenCallbackHandler, StreamingLLMCallbackHandler
 from query_data import get_chain
@@ -16,15 +17,21 @@ app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 vectorstore: Optional[VectorStore] = None
 
+QDRANT_URL = os.getenv('QDRANT_URL')
+QDRANT_API_KEY = os.getenv('QDRANT_API_KEY')
+QDRANT_COLLECTION = os.getenv('QDRANT_COLLECTION')
+
+embeddings = OpenAIEmbeddings()
+qdrant_client = QdrantClient(
+    url=QDRANT_URL,
+    api_key=QDRANT_API_KEY,
+)
 
 @app.on_event("startup")
 async def startup_event():
     logging.info("loading vectorstore")
-    if not Path("vectorstore.pkl").exists():
-        raise ValueError("vectorstore.pkl does not exist, please run ingest.py first")
-    with open("vectorstore.pkl", "rb") as f:
-        global vectorstore
-        vectorstore = pickle.load(f)
+    global vectorstore
+    vectorstore = Qdrant(client=qdrant_client, collection_name=QDRANT_COLLECTION, embeddings=embeddings)
 
 
 @app.get("/")
